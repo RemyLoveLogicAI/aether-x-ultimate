@@ -1,5 +1,5 @@
-torch==1.13.1
-transformers==4.21.0
+torch==2.8.0
+transformers==4.53.0
 flask==2.3.3
-gunicorn==20.1.0
-requests==2.31.0
+gunicorn==22.0.0
+requests==2.32.4
