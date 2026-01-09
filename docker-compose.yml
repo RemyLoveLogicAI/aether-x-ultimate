@@ -1,0 +1,246 @@
+version: '3.8'
+
+services:
+  # Text Generation Service
+  text-generation:
+    build: ./services/text-generation
+    container_name: aether-x-text-generation
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - redis
+      - elasticsearch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Image Generation Service
+  image-generation:
+    build: ./services/image-generation
+    container_name: aether-x-image-generation
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - redis
+      - mongodb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Video Generation Service
+  video-generation:
+    build: ./services/video-generation
+    container_name: aether-x-video-generation
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - redis
+      - mongodb
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # AI Models Service
+  ai-models:
+    build: ./services/ai-models
+    container_name: aether-x-ai-models
+    restart: unless-stopped
+    ports:
+      - "8003:8003"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - redis
+      - elasticsearch
+    volumes:
+      - ./models:/app/models
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8003/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # No-Code Development Service
+  no-code-development:
+    build: ./services/no-code-development
+    container_name: aether-x-no-code
+    restart: unless-stopped
+    ports:
+      - "8004:8004"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - postgres
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Security Service
+  security:
+    build: ./services/security
+    container_name: aether-x-security
+    restart: unless-stopped
+    ports:
+      - "8005:8005"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - redis
+      - elasticsearch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8005/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Data Processing Service
+  data-processing:
+    build: ./services/data-processing
+    container_name: aether-x-data-processing
+    restart: unless-stopped
+    ports:
+      - "8006:8006"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - kafka
+      - redis
+      - elasticsearch
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8006/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Gateway
+  api-gateway:
+    build: ./services/api-gateway
+    container_name: aether-x-api-gateway
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - FLASK_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - security
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Centralized Dashboard
+  dashboard:
+    build: ./services/dashboard
+    container_name: aether-x-dashboard
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+    networks:
+      - aether-x-network
+    depends_on:
+      - api-gateway
+      - redis
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Monitoring (Prometheus + Grafana)
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: aether-x-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    networks:
+      - aether-x-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: aether-x-grafana
+    restart: unless-stopped
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./monitoring/grafana-dashboards:/etc/grafana/provisioning/dashboards
+      - ./monitoring/grafana-datasources:/etc/grafana/provisioning/datasources
+    networks:
+      - aether-x-network
+
+  # Load Balancer (Nginx)
+  nginx:
+    image: nginx:alpine
+    container_name: aether-x-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf
+      - ./nginx/ssl:/etc/nginx/ssl
+    networks:
+      - aether-x-network
+    depends_on:
+      - api-gateway
+      - dashboard
+
+volumes:
+  prometheus_data:
+  grafana_data:
+
+networks:
+  aether-x-network:
+    driver: bridge

@@ -1,0 +1,8 @@
+torch==1.13.1
+torchvision==0.14.1
+transformers==4.21.0
+Pillow==10.0.0
+numpy==1.24.0
+flask==2.3.3
+gunicorn==20.1.0
+requests==2.31.0
