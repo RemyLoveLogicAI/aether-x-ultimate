@@ -25,6 +25,27 @@ echo -e "${BLUE}================================================================
 echo ""
 
 # ------------------------------------------------------------------------------
+# Detect Docker Compose Command (v1 vs v2 compatibility)
+# ------------------------------------------------------------------------------
+DOCKER_COMPOSE_CMD=""
+
+if docker compose version &> /dev/null; then
+    # Docker Compose v2 (plugin)
+    DOCKER_COMPOSE_CMD="docker compose"
+    COMPOSE_VERSION="v2 ($(docker compose version --short 2>/dev/null || echo 'unknown'))"
+elif command -v docker-compose &> /dev/null; then
+    # Docker Compose v1 (standalone)
+    DOCKER_COMPOSE_CMD="docker-compose"
+    COMPOSE_VERSION="v1 ($(docker-compose --version 2>/dev/null | grep -oP '\d+\.\d+\.\d+' || echo 'unknown'))"
+else
+    echo -e "${RED}Error: Docker Compose is not installed${NC}"
+    echo "Please install Docker Compose:"
+    echo "  - v2 (recommended): https://docs.docker.com/compose/install/"
+    echo "  - v1: https://docs.docker.com/compose/install/other/"
+    exit 1
+fi
+
+# ------------------------------------------------------------------------------
 # Check Prerequisites
 # ------------------------------------------------------------------------------
 echo -e "${YELLOW}[1/6] Checking prerequisites...${NC}"
@@ -38,12 +59,7 @@ fi
 echo -e "${GREEN}✓ Docker found: $(docker --version)${NC}"
 
 # Check Docker Compose
-if ! command -v docker-compose &> /dev/null; then
-    echo -e "${RED}Error: Docker Compose is not installed${NC}"
-    echo "Please install Docker Compose: https://docs.docker.com/compose/install/"
-    exit 1
-fi
-echo -e "${GREEN}✓ Docker Compose found: $(docker-compose --version)${NC}"
+echo -e "${GREEN}✓ Docker Compose found: ${COMPOSE_VERSION}${NC}"
 
 # Check NVIDIA Docker Runtime
 if ! docker run --rm --gpus all nvidia/cuda:12.1.0-base-ubuntu22.04 nvidia-smi &> /dev/null; then
@@ -109,7 +125,7 @@ echo "  - Config: ${CONFIG_DIR:-./config}"
 # ------------------------------------------------------------------------------
 echo -e "\n${YELLOW}[4/6] Pulling vLLM Docker image...${NC}"
 
-VLLM_IMAGE="vllm/vllm-openai:${VLLM_VERSION:-v0.11.0}"
+VLLM_IMAGE="vllm/vllm-openai:${VLLM_VERSION:-v0.11.1}"
 echo "Image: $VLLM_IMAGE"
 
 if docker pull "$VLLM_IMAGE"; then
@@ -133,6 +149,7 @@ echo "Model Configuration:"
 echo "  - Model: ${MODEL_NAME:-meta-llama/Llama-3.1-8B-Instruct}"
 echo "  - Served Name: ${SERVED_MODEL_NAME:-aether-x-ultimate}"
 echo "  - Max Length: ${MAX_MODEL_LEN:-4096}"
+echo "  - Trust Remote Code: ${TRUST_REMOTE_CODE:-false}"
 echo ""
 echo "Port Configuration:"
 echo "  - vLLM API: ${VLLM_PORT:-8000}"
@@ -144,8 +161,8 @@ echo "  - App Server: ${APP_PORT:-8080}"
 # ------------------------------------------------------------------------------
 echo -e "\n${YELLOW}[6/6] Starting services...${NC}"
 
-echo -e "${BLUE}Starting Docker Compose...${NC}"
-if docker-compose -f docker-compose.yml up -d; then
+echo -e "${BLUE}Starting Docker Compose (using ${DOCKER_COMPOSE_CMD})...${NC}"
+if $DOCKER_COMPOSE_CMD -f docker-compose.yml up -d; then
     echo -e "${GREEN}✓ Services started successfully${NC}"
 else
     echo -e "${RED}Error: Failed to start services${NC}"
@@ -174,7 +191,7 @@ done
 
 if [ $WAIT_TIME -ge $MAX_WAIT ]; then
     echo -e "\n${RED}Error: Service did not become healthy within ${MAX_WAIT}s${NC}"
-    echo "Check logs with: docker-compose logs vllm-server"
+    echo "Check logs with: $DOCKER_COMPOSE_CMD logs vllm-server"
     exit 1
 fi
 
@@ -191,9 +208,9 @@ echo -e "  - Health Check: ${BLUE}http://localhost:${VLLM_PORT:-8000}/health${NC
 echo -e "  - Metrics: ${BLUE}http://localhost:${METRICS_PORT:-8001}/metrics${NC}"
 echo ""
 echo "Quick Commands:"
-echo -e "  - View logs: ${BLUE}docker-compose logs -f vllm-server${NC}"
-echo -e "  - Stop services: ${BLUE}docker-compose down${NC}"
-echo -e "  - Restart: ${BLUE}docker-compose restart${NC}"
+echo -e "  - View logs: ${BLUE}$DOCKER_COMPOSE_CMD logs -f vllm-server${NC}"
+echo -e "  - Stop services: ${BLUE}$DOCKER_COMPOSE_CMD down${NC}"
+echo -e "  - Restart: ${BLUE}$DOCKER_COMPOSE_CMD restart${NC}"
 echo ""
 echo "Test the API:"
 echo -e "${BLUE}curl http://localhost:${VLLM_PORT:-8000}/v1/models${NC}"

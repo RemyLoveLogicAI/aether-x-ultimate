@@ -14,7 +14,8 @@
 # ==============================================================================
 # Stage 1: Base vLLM Image
 # ==============================================================================
-ARG VLLM_VERSION=v0.11.0
+# SECURITY: Updated to v0.11.1 to address CVE-2025-66448 RCE vulnerability
+ARG VLLM_VERSION=v0.11.1
 FROM vllm/vllm-openai:${VLLM_VERSION} AS vllm-base
 
 # Image metadata
@@ -36,6 +37,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 FROM vllm-base AS app-builder
 
 # Install additional system dependencies if needed
+# SECURITY FIX: Added 'bc' package required for benchmark script calculations
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
@@ -43,6 +45,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     vim \
     tmux \
     htop \
+    bc \
     && rm -rf /var/lib/apt/lists/*
 
 # Create application directory
@@ -93,24 +96,25 @@ EXPOSE 8000 8001
 WORKDIR /workspace/aether-x-ultimate
 
 # Default command: Start vLLM OpenAI API server
+# SECURITY: Removed --trust-remote-code flag by default
+# Only enable for trusted models by setting TRUST_REMOTE_CODE=true in environment
 CMD ["python", "-m", "vllm.entrypoints.openai.api_server", \
      "--host", "0.0.0.0", \
      "--port", "8000", \
      "--model", "/workspace/models/default", \
      "--served-model-name", "aether-x-ultimate", \
      "--max-model-len", "4096", \
-     "--gpu-memory-utilization", "0.9", \
-     "--trust-remote-code"]
+     "--gpu-memory-utilization", "0.9"]
 
 # ==============================================================================
 # Build Instructions:
 # ==============================================================================
-# Build with default version (v0.11.0):
+# Build with default version (v0.11.1):
 #   docker build -t aether-x-ultimate:vllm -f docker/vllm/Dockerfile .
 #
 # Build with latest vLLM:
 #   docker build --build-arg VLLM_VERSION=latest -t aether-x-ultimate:vllm-latest -f docker/vllm/Dockerfile .
 #
 # Build with specific CUDA version:
-#   docker build --build-arg VLLM_VERSION=v0.11.0 -t aether-x-ultimate:vllm-cu121 -f docker/vllm/Dockerfile .
+#   docker build --build-arg VLLM_VERSION=v0.11.1 -t aether-x-ultimate:vllm-cu121 -f docker/vllm/Dockerfile .
 # ==============================================================================

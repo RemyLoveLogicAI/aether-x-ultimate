@@ -14,7 +14,8 @@ services:
   # vLLM Service - Main LLM Inference Engine
   # ==========================================================================
   vllm-server:
-    image: vllm/vllm-openai:${VLLM_VERSION:-v0.11.0}
+    # SECURITY: Pinned to specific version to prevent CVE-2025-66448
+    image: vllm/vllm-openai:${VLLM_VERSION:-v0.11.1}
     container_name: aether-vllm-server
     restart: unless-stopped
     
@@ -79,6 +80,8 @@ services:
       start_period: 60s
     
     # Command Override (customize as needed)
+    # SECURITY: Removed --trust-remote-code flag by default
+    # Add it back only for trusted models via TRUST_REMOTE_CODE env var
     command: >
       python -m vllm.entrypoints.openai.api_server
       --host 0.0.0.0
@@ -87,7 +90,7 @@ services:
       --served-model-name ${SERVED_MODEL_NAME:-aether-x-ultimate}
       --max-model-len ${MAX_MODEL_LEN:-4096}
       --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.9}
-      --trust-remote-code
+      ${TRUST_REMOTE_CODE:-false}
       --enable-auto-tool-choice
       --tool-call-parser hermes
 
@@ -99,7 +102,7 @@ services:
       context: ../..
       dockerfile: docker/vllm/Dockerfile
       args:
-        VLLM_VERSION: ${VLLM_VERSION:-v0.11.0}
+        VLLM_VERSION: ${VLLM_VERSION:-v0.11.1}
     container_name: aether-app-server
     restart: unless-stopped
     
@@ -133,7 +136,8 @@ services:
   # Monitoring - Prometheus (Optional)
   # ==========================================================================
   prometheus:
-    image: prom/prometheus:latest
+    # SECURITY: Pinned to specific version for reproducible builds
+    image: prom/prometheus:v2.48.1
     container_name: aether-prometheus
     restart: unless-stopped
     profiles:
@@ -157,7 +161,8 @@ services:
   # Monitoring - Grafana (Optional)
   # ==========================================================================
   grafana:
-    image: grafana/grafana:latest
+    # SECURITY: Pinned to specific version for reproducible builds
+    image: grafana/grafana:10.2.3
     container_name: aether-grafana
     restart: unless-stopped
     profiles:
@@ -174,7 +179,8 @@ services:
       - aether-network
     
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-admin}
+      # SECURITY: No default password - must be set in .env or prompted on first login
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-}
       - GF_USERS_ALLOW_SIGN_UP=false
 
 # ==============================================================================

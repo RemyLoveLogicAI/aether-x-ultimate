@@ -11,6 +11,7 @@ set -e
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
+RED='\033[0;31m'
 NC='\033[0m'
 
 # Configuration
@@ -38,6 +39,12 @@ echo ""
 if ! command -v jq &> /dev/null; then
   echo -e "${YELLOW}Installing jq for JSON parsing...${NC}"
   sudo apt-get update && sudo apt-get install -y jq
+fi
+
+# SECURITY FIX: Ensure 'bc' is installed for math calculations
+if ! command -v bc &> /dev/null; then
+  echo -e "${YELLOW}Installing bc for calculations...${NC}"
+  sudo apt-get update && sudo apt-get install -y bc
 fi
 
 # Benchmark function
