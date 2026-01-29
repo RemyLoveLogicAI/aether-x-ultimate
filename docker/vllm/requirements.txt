@@ -1,0 +1,57 @@
+# ==============================================================================
+# Application Requirements for Aether-X-Ultimate with vLLM
+# ==============================================================================
+# These are ADDITIONAL dependencies for your application layer.
+# PyTorch and vLLM are already provided by the base image.
+# ==============================================================================
+
+# OpenAI Python Client (for interacting with vLLM API)
+openai>=1.99.1
+
+# Web Framework (if building custom API)
+fastapi>=0.115.0
+uvicorn[standard]>=0.24.0
+
+# HTTP Clients
+requests>=2.26.0
+httpx>=0.25.2
+aiohttp>=3.9.0
+
+# Data Processing
+pandas>=2.1.0
+numpy>=1.24.0
+
+# Monitoring & Logging
+prometheus-client>=0.18.0
+loguru>=0.7.0
+python-json-logger>=2.0.7
+
+# Configuration Management
+python-dotenv>=1.0.0
+pyyaml>=6.0
+pydantic>=2.12.0
+
+# Utilities
+tqdm>=4.66.0
+rich>=13.6.0
+click>=8.1.0
+
+# Testing (optional)
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+pytest-cov>=4.1.0
+httpx>=0.25.2  # For testing FastAPI
+
+# Development Tools (optional)
+black>=23.10.0
+ruff>=0.1.0
+mypy>=1.6.0
+
+# ==============================================================================
+# Notes:
+# ==============================================================================
+# - torch, transformers, and vllm are provided by vllm/vllm-openai base image
+# - CUDA libraries are pre-installed and configured
+# - No need to manage torch/CUDA versions manually
+# - Keep this file minimal - only add app-specific dependencies
+# ==============================================================================

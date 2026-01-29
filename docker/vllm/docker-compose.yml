@@ -1,0 +1,227 @@
+# ==============================================================================
+# Docker Compose Configuration for vLLM-Powered Aether-X-Ultimate
+# ==============================================================================
+# This compose file provides multiple deployment scenarios:
+# 1. Single GPU development setup
+# 2. Multi-GPU production setup
+# 3. CPU-only testing setup
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ==========================================================================
+  # vLLM Service - Main LLM Inference Engine
+  # ==========================================================================
+  vllm-server:
+    # SECURITY: Pinned to specific version to prevent CVE-2025-66448
+    image: vllm/vllm-openai:${VLLM_VERSION:-v0.11.1}
+    container_name: aether-vllm-server
+    restart: unless-stopped
+    
+    # GPU Configuration
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: ${GPU_COUNT:-1}
+              capabilities: [gpu]
+    
+    # Environment Variables
+    environment:
+      # vLLM Configuration
+      - VLLM_WORKER_MULTIPROC_METHOD=spawn
+      - VLLM_ATTENTION_BACKEND=${ATTENTION_BACKEND:-FLASHINFER}
+      - VLLM_USE_MODELSCOPE=False
+      - VLLM_USAGE_SOURCE=production
+      
+      # CUDA Configuration
+      - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+      
+      # Performance Tuning
+      - MAX_JOBS=4
+      - TORCH_CUDA_ARCH_LIST=8.0;8.6;8.9;9.0
+      
+      # Model Configuration
+      - MODEL_NAME=${MODEL_NAME:-meta-llama/Llama-3.1-8B-Instruct}
+      - MODEL_PATH=${MODEL_PATH:-/workspace/models}
+      - MAX_MODEL_LEN=${MAX_MODEL_LEN:-4096}
+      - GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION:-0.9}
+      
+      # API Configuration
+      - SERVED_MODEL_NAME=${SERVED_MODEL_NAME:-aether-x-ultimate}
+      - API_KEY=${VLLM_API_KEY:-}
+      
+    # Volume Mounts
+    volumes:
+      - ${MODEL_CACHE_DIR:-./models}:/workspace/models
+      - ${LOGS_DIR:-./logs}:/workspace/logs
+      - ${CONFIG_DIR:-./config}:/workspace/config
+      - huggingface-cache:/root/.cache/huggingface
+      
+    # Port Mappings
+    ports:
+      - "${VLLM_PORT:-8000}:8000"  # OpenAI API compatible endpoint
+      - "${METRICS_PORT:-8001}:8001"  # Metrics endpoint
+    
+    # Networking
+    networks:
+      - aether-network
+    
+    # Health Check
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    
+    # Command Override (customize as needed)
+    # SECURITY: Removed --trust-remote-code flag by default
+    # Add it back only for trusted models via TRUST_REMOTE_CODE env var
+    command: >
+      python -m vllm.entrypoints.openai.api_server
+      --host 0.0.0.0
+      --port 8000
+      --model ${MODEL_NAME:-meta-llama/Llama-3.1-8B-Instruct}
+      --served-model-name ${SERVED_MODEL_NAME:-aether-x-ultimate}
+      --max-model-len ${MAX_MODEL_LEN:-4096}
+      --gpu-memory-utilization ${GPU_MEMORY_UTILIZATION:-0.9}
+      ${TRUST_REMOTE_CODE:-false}
+      --enable-auto-tool-choice
+      --tool-call-parser hermes
+
+  # ==========================================================================
+  # Application Service - Your Custom API Layer
+  # ==========================================================================
+  app-server:
+    build:
+      context: ../..
+      dockerfile: docker/vllm/Dockerfile
+      args:
+        VLLM_VERSION: ${VLLM_VERSION:-v0.11.1}
+    container_name: aether-app-server
+    restart: unless-stopped
+    
+    depends_on:
+      vllm-server:
+        condition: service_healthy
+    
+    environment:
+      - VLLM_API_BASE=http://vllm-server:8000/v1
+      - VLLM_API_KEY=${VLLM_API_KEY:-}
+      - APP_ENV=${APP_ENV:-production}
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+    
+    volumes:
+      - ${LOGS_DIR:-./logs}:/workspace/logs
+      - ${CONFIG_DIR:-./config}:/workspace/config
+    
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    
+    networks:
+      - aether-network
+    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # ==========================================================================
+  # Monitoring - Prometheus (Optional)
+  # ==========================================================================
+  prometheus:
+    # SECURITY: Pinned to specific version for reproducible builds
+    image: prom/prometheus:v2.48.1
+    container_name: aether-prometheus
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    
+    volumes:
+      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    
+    networks:
+      - aether-network
+    
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+
+  # ==========================================================================
+  # Monitoring - Grafana (Optional)
+  # ==========================================================================
+  grafana:
+    # SECURITY: Pinned to specific version for reproducible builds
+    image: grafana/grafana:10.2.3
+    container_name: aether-grafana
+    restart: unless-stopped
+    profiles:
+      - monitoring
+    
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./config/grafana:/etc/grafana/provisioning
+    
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    
+    networks:
+      - aether-network
+    
+    environment:
+      # SECURITY: No default password - must be set in .env or prompted on first login
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_PASSWORD:-}
+      - GF_USERS_ALLOW_SIGN_UP=false
+
+# ==============================================================================
+# Networks
+# ==============================================================================
+networks:
+  aether-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+# ==============================================================================
+# Volumes
+# ==============================================================================
+volumes:
+  huggingface-cache:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+# ==============================================================================
+# Usage Examples:
+# ==============================================================================
+# 1. Start with default settings:
+#    docker-compose -f docker/vllm/docker-compose.yml up -d
+#
+# 2. Start with custom model:
+#    MODEL_NAME=mistralai/Mistral-7B-Instruct-v0.3 docker-compose up -d
+#
+# 3. Start with monitoring:
+#    docker-compose --profile monitoring up -d
+#
+# 4. Start with 2 GPUs:
+#    GPU_COUNT=2 docker-compose up -d
+#
+# 5. View logs:
+#    docker-compose logs -f vllm-server
+#
+# 6. Stop all services:
+#    docker-compose down
+# ==============================================================================
